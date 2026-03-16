@@ -33,9 +33,16 @@ async function qiniuUpload(file, cloudKey) {
   const token = await generateQiniuToken();
   console.log('Uploading with token:', token.substring(0, 50) + '...');
   return new Promise((resolve, reject) => {
-    const observable = qiniu.upload(file, cloudKey, token, {}, {
-      region: qiniu.region.z0
-    });
+    const config = {
+      useCdnDomain: false,
+      region: qiniu.region.z0,
+      forceDirect: true
+    };
+    const putExtra = {
+      fname: file.name,
+      mimeType: file.type || 'application/octet-stream'
+    };
+    const observable = qiniu.upload(file, cloudKey, token, putExtra, config);
     observable.subscribe({
       next(res) { console.log('Progress:', res.total.percent + '%'); },
       error(err) { reject(new Error('上传失败: ' + JSON.stringify(err))); },
