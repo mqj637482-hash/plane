@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>QJ 修图小作坊</title>
 <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qiniu-js@3.4.1/dist/qiniu.min.js"></script>
 <script>emailjs.init("uhF-49v-h5b1Z88Jw");</script>
 
 <script>
@@ -12,12 +13,12 @@ const QINIU_AK = "71oeypROB7tE57yfzZ9_9E9G0IHZMeJQ-fUGPkna";
 const QINIU_SK = "d07lSTfLVnZBmUZjw4zzdvA3vCFEQvGe2fTICNtH";
 const QINIU_BUCKET = "qjstudio";
 const QINIU_DOMAIN = "https://tbz0i03n9.hd-bkt.clouddn.com";
+const QINIU_REGION = qiniu.region.z0; // 华东
 
 async function generateQiniuToken() {
   const deadline = Math.floor(Date.now() / 1000) + 3600;
   const policy = JSON.stringify({"scope": QINIU_BUCKET, "deadline": deadline});
-  const encoded = btoa(unescape(encodeURIComponent(policy)))
-    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+  const encoded = btoa(policy).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
   const key = await crypto.subtle.importKey(
     'raw', new TextEncoder().encode(QINIU_SK),
     {name: 'HMAC', hash: 'SHA-1'}, false, ['sign']
@@ -30,27 +31,19 @@ async function generateQiniuToken() {
 
 async function qiniuUpload(file, cloudKey) {
   const token = await generateQiniuToken();
-  console.log('Token generated:', token.substring(0, 60) + '...');
-  const form = new FormData();
-  form.append('token', token);
-  form.append('key', cloudKey);
-  form.append('file', file);
-  const endpoints = ['https://up-z0.qiniup.com', 'https://upload-z0.qiniup.com'];
-  let lastErr;
-  for (const ep of endpoints) {
-    try {
-      const res = await fetch(ep, {method: 'POST', body: form});
-      if (res.ok) {
-        const d = await res.json();
-        return {fileID: d.key, url: QINIU_DOMAIN + '/' + d.key};
+  console.log('Uploading with token:', token.substring(0, 50) + '...');
+  return new Promise((resolve, reject) => {
+    const observable = qiniu.upload(file, cloudKey, token, {}, {
+      region: qiniu.region.z0
+    });
+    observable.subscribe({
+      next(res) { console.log('Progress:', res.total.percent + '%'); },
+      error(err) { reject(new Error('上传失败: ' + JSON.stringify(err))); },
+      complete(res) {
+        resolve({ fileID: res.key, url: QINIU_DOMAIN + '/' + res.key });
       }
-      lastErr = new Error('上传失败:' + res.status + ' ' + await res.text());
-    } catch(e) {
-      lastErr = e;
-      console.warn('端点失败:', ep, e.message);
-    }
-  }
-  throw lastErr;
+    });
+  });
 }
 </script>
 <script type="module">
