@@ -8,19 +8,38 @@
 <script>emailjs.init("uhF-49v-h5b1Z88Jw");</script>
 
 <script>
-const QINIU_UPLOAD_TOKEN = "71oeypROB7tE57yfzZ9_9E9G0IHZMeJQ-fUGPkna:kHwqHGcqDhdthnY__BrMt2t3Oqw:eyJzY29wZSI6InFqc3R1ZGlvIiwiZGVhZGxpbmUiOjE3NzYyNjcwODN9";
+const QINIU_AK = "71oeypROB7tE57yfzZ9_9E9G0IHZMeJQ-fUGPkna";
+const QINIU_SK = "d07lSTfLVnZBmUZjw4zzdvA3vCFEQvGe2fTICNtH";
+const QINIU_BUCKET = "qjstudio";
 const QINIU_DOMAIN = "https://tbz0i03n9.hd-bkt.clouddn.com";
-async function qiniuUpload(file, key) {
+
+async function generateQiniuToken() {
+  const deadline = Math.floor(Date.now() / 1000) + 3600;
+  const policy = JSON.stringify({"scope": QINIU_BUCKET, "deadline": deadline});
+  const encoded = btoa(unescape(encodeURIComponent(policy)))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+  const key = await crypto.subtle.importKey(
+    'raw', new TextEncoder().encode(QINIU_SK),
+    {name: 'HMAC', hash: 'SHA-1'}, false, ['sign']
+  );
+  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(encoded));
+  const sign = btoa(String.fromCharCode(...new Uint8Array(sig)))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+  return `${QINIU_AK}:${sign}:${encoded}`;
+}
+
+async function qiniuUpload(file, cloudKey) {
+  const token = await generateQiniuToken();
+  console.log('Token generated:', token.substring(0, 60) + '...');
   const form = new FormData();
-  form.append('token', QINIU_UPLOAD_TOKEN);
-  form.append('key', key);
+  form.append('token', token);
+  form.append('key', cloudKey);
   form.append('file', file);
-  // 尝试多个上传端点
   const endpoints = ['https://up-z0.qiniup.com', 'https://upload-z0.qiniup.com'];
   let lastErr;
   for (const ep of endpoints) {
     try {
-      const res = await fetch(ep, {method:'POST', body:form});
+      const res = await fetch(ep, {method: 'POST', body: form});
       if (res.ok) {
         const d = await res.json();
         return {fileID: d.key, url: QINIU_DOMAIN + '/' + d.key};
