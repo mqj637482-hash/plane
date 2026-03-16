@@ -8,17 +8,30 @@
 <script>emailjs.init("uhF-49v-h5b1Z88Jw");</script>
 
 <script>
-const QINIU_UPLOAD_TOKEN = "71oeypROB7tE57yfzZ9_9E9G0IHZMeJQ-fUGPkna:_mKCoTV7OET9fvsAqJl14ymlvGU:eyJzY29wZSI6InFqc3R1ZGlvIiwiZGVhZGxpbmUiOjE3NzYyMjQwNzd9";
+const QINIU_UPLOAD_TOKEN = "71oeypROB7tE57yfzZ9_9E9G0IHZMeJQ-fUGPkna:Nz6r535A2CbuNfCX-A-b2o50HhI:eyJzY29wZSI6InFqc3R1ZGlvIiwiZGVhZGxpbmUiOjE3NzYyMjQzODB9";
 const QINIU_DOMAIN = "https://tbz0i03n9.hd-bkt.clouddn.com";
 async function qiniuUpload(file, key) {
   const form = new FormData();
   form.append('token', QINIU_UPLOAD_TOKEN);
   form.append('key', key);
   form.append('file', file);
-  const res = await fetch('https://up-z0.qiniup.com', {method:'POST', body:form});
-  if (!res.ok) throw new Error('上传失败:' + res.status + ' ' + await res.text());
-  const d = await res.json();
-  return {fileID: d.key, url: QINIU_DOMAIN + '/' + d.key};
+  // 尝试多个上传端点
+  const endpoints = ['https://up-z0.qiniup.com', 'https://upload-z0.qiniup.com', 'https://up.qiniup.com'];
+  let lastErr;
+  for (const ep of endpoints) {
+    try {
+      const res = await fetch(ep, {method:'POST', body:form});
+      if (res.ok) {
+        const d = await res.json();
+        return {fileID: d.key, url: QINIU_DOMAIN + '/' + d.key};
+      }
+      lastErr = new Error('上传失败:' + res.status + ' ' + await res.text());
+    } catch(e) {
+      lastErr = e;
+      console.warn('端点失败:', ep, e.message);
+    }
+  }
+  throw lastErr;
 }
 </script>
 <script type="module">
