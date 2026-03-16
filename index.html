@@ -8,58 +8,17 @@
 <script>emailjs.init("uhF-49v-h5b1Z88Jw");</script>
 
 <script>
-// ── 腾讯云存储精简SDK（内嵌版）──────────────────
-class TCBStorage {
-  constructor(envId) {
-    this.envId = envId;
-    this.base = `https://${envId}.ap-shanghai.tcb-api.tencentcloudapi.com`;
-    this._token = null;
-    this._expiry = 0;
-    this._did = (() => {
-      try {
-        let id = localStorage.getItem('_tcb_did');
-        if (!id) { id = 'web_' + Math.random().toString(36).substr(2,16); localStorage.setItem('_tcb_did', id); }
-        return id;
-      } catch(e) { return 'web_' + Math.random().toString(36).substr(2,16); }
-    })();
-  }
-  async _tok() {
-    if (this._token && Date.now() < this._expiry) return this._token;
-    const r = await fetch(`${this.base}/auth/v1/signin/anonymously`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-device-id': this._did, 'x-request-id': Math.random().toString(36).substr(2,32) },
-      body: '{}'
-    });
-    const d = await r.json();
-    if (!d.access_token) throw new Error('登录失败:' + JSON.stringify(d));
-    this._token = d.access_token;
-    this._expiry = Date.now() + (d.expires_in||7200)*900;
-    return this._token;
-  }
-  async uploadFile(cloudPath, file) {
-    const tok = await this._tok();
-    const r = await fetch(`${this.base}/storage/v1/upload-url`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'authorization': `Bearer ${tok}` },
-      body: JSON.stringify({ path: cloudPath })
-    });
-    const info = await r.json();
-    if (!info.url) throw new Error('获取上传地址失败:' + JSON.stringify(info));
-    const form = new FormData();
-    if (info.form) Object.entries(info.form).forEach(([k,v]) => form.append(k,v));
-    form.append('file', file);
-    const up = await fetch(info.url, { method: 'POST', body: form });
-    if (!up.ok && up.status !== 204) throw new Error('上传失败:' + up.status);
-    const tok2 = await this._tok();
-    const dl = await fetch(`${this.base}/storage/v1/download-url`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'authorization': `Bearer ${tok2}` },
-      body: JSON.stringify({ paths: [cloudPath] })
-    });
-    const dld = await dl.json();
-    const url = dld.data?.[0]?.url || dld.files?.[0]?.url || '';
-    return { fileID: cloudPath, url };
-  }
+const QINIU_UPLOAD_TOKEN = "71oeypROB7tE57yfzZ9_9E9G0IHZMeJQ-fUGPkna:_mKCoTV7OET9fvsAqJl14ymlvGU:eyJzY29wZSI6InFqc3R1ZGlvIiwiZGVhZGxpbmUiOjE3NzYyMjQwNzd9";
+const QINIU_DOMAIN = "https://tbz0i03n9.hd-bkt.clouddn.com";
+async function qiniuUpload(file, key) {
+  const form = new FormData();
+  form.append('token', QINIU_UPLOAD_TOKEN);
+  form.append('key', key);
+  form.append('file', file);
+  const res = await fetch('https://up-z0.qiniup.com', {method:'POST', body:form});
+  if (!res.ok) throw new Error('上传失败:' + res.status + ' ' + await res.text());
+  const d = await res.json();
+  return {fileID: d.key, url: QINIU_DOMAIN + '/' + d.key};
 }
 </script>
 <script type="module">
@@ -84,14 +43,14 @@ class TCBStorage {
   const db = getFirestore(app);
 
   // ── 腾讯云存储（国内外通用）──────────────────
-  const tcbStorage = new TCBStorage("qjstudio-9ghhupv9c36e4853");
+  
 
   // 通过腾讯云云函数获取七牛 Token
   const TCB_ENV = "qjstudio-9ghhupv9c36e4853";
 
   // 上传到腾讯云存储
   async function uploadToQiniu(file, cloudPath) {
-    return await tcbStorage.uploadFile(cloudPath, file);
+    return await qiniuUpload(file, cloudPath);
   }
 
   // 七牛 Token 通过腾讯云 HTTP 云函数获取
